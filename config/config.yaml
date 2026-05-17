@@ -1,0 +1,19 @@
+# cagepipe default workflow config — override with `--config key=value`.
+
+# Path to the cage directory; default "." means "run snakemake from inside it
+# (or pass -d <cage_dir>)".
+cage_dir: "."
+
+# Prefix used by tleapgen for output files (writes {prefix}_dry.{pdb,prmtop,inpcrd}).
+prefix: "ori"
+
+# Path to gaff2.dat. Leave blank to use the gaff2.dat bundled with the package.
+gaff: ""
+
+# Path to Multiwfn_noGUI. Leave blank to use $CAGEPIPE_MULTIWFN or the hard-coded
+# fallback inside respfit.py. (Multiwfn is closed-source — install separately.)
+multiwfn: ""
+
+# Solvate-rule knobs (only used when you target seasoning_* explicitly).
+anion_template: "BFA"
+n_anions_outside: 24

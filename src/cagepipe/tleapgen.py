@@ -230,37 +230,35 @@ def generate_atom_types(pdb_data, connectivity):
 def generate_bond_commands(pdb_data, connectivity):
     """
     Generate bond commands for metal-nitrogen connections.
-    
-    Format: bond mol.{ligand_residue_num}.{N_atom_name} mol.{metal_residue_num}.PD
-    
-    The residue numbers are based on the order in the PDB file (1-indexed).
-    Ligands come first, then metals, then anions.
+
+    Format: bond mol.{ligand_residue_num}.{N_atom_name} mol.{metal_residue_num}.{metal_atom_name}
+
+    The metal atom name is read from the PDB (e.g. PD or PT) so this works
+    for both Pd and Pt cages. Ligands come first, then metals, then anions.
     """
     bonds = []
     ml_residues = pdb_data['ml_residues']
     pd_residues = pdb_data['pd_residues']
+    metal_types = pdb_data['metal_types']
     bond_info = connectivity['bond_info']
-    
-    # Calculate the mol index for metals (ligands + metal index)
+
     num_ligands = len(ml_residues)
-    
-    # Group bonds by metal for organized output
+
     bonds_by_metal = defaultdict(list)
     for b in bond_info:
         bonds_by_metal[b['metal_idx']].append(b)
-    
-    # Generate bond commands sorted by metal index
+
     for m_idx in sorted(bonds_by_metal.keys()):
         metal_bonds = bonds_by_metal[m_idx]
-        # Sort by ligand index then by N atom name
         metal_bonds.sort(key=lambda x: (x['ligand_idx'], x['n_name']))
-        
+
         for b in metal_bonds:
             ligand_mol_idx = b['ligand_idx']
             metal_mol_idx = num_ligands + b['metal_idx']
             n_name = b['n_name']
-            bonds.append(f"bond mol.{ligand_mol_idx}.{n_name} mol.{metal_mol_idx}.PD")
-    
+            metal_name = metal_types.get(b['metal_res_key'], 'PD')
+            bonds.append(f"bond mol.{ligand_mol_idx}.{n_name} mol.{metal_mol_idx}.{metal_name}")
+
     return bonds
 
 
@@ -299,78 +297,96 @@ def get_unique_residue_names(pdb_data):
 
 def write_tleap_file(output_file, pdb_file, pdb_data, connectivity,
                      frcmod_file="munro.frcmod",
-                     solvent_lib=None,
+                     solvent_lib="water",
                      solvent_box_size=15.0,
-                     output_prefix="ori"):
+                     output_prefix="ori",
+                     neutralize=True):
     """
     Write the complete tleap.in file.
+
+    solvent_lib:
+        - "water" (default): use OPCBOX from leaprc.water.opc.
+        - None / "none":     skip solvation entirely (dry-only output).
+        - "<file>.lib":      loadoff the .lib and use its basename as the box.
+    neutralize:
+        Emit `addions mol Na+ 0` and `addions mol Cl- 0` after solvateBox so
+        whichever counterion is needed is added to bring the net charge to 0.
+        addions with charge=0 is a no-op when the unit is already neutral.
     """
     residues = get_unique_residue_names(pdb_data)
     atom_types = generate_atom_types(pdb_data, connectivity)
     bonds = generate_bond_commands(pdb_data, connectivity)
-    
+
     # Get PDB filename without path
     pdb_basename = os.path.basename(pdb_file)
-    
+
     with open(output_file, 'w') as f:
         # Source force field files
         f.write("source leaprc.protein.ff19SB\n")
         f.write("source leaprc.gaff2\n")
         f.write("source leaprc.water.opc\n")
         f.write("\n")
-        
+
         # Add atom types
         f.write("addAtomTypes {\n")
         for line in atom_types:
             f.write(line + "\n")
         f.write("}\n")
         f.write("\n")
-        
+
         # Load ligand mol2 files
         for lig in residues['ligands']:
             f.write(f"{lig} = loadmol2 {lig}.mol2\n")
-        
+
         # Load metal mol2 files
         for metal in residues['metals']:
             f.write(f"{metal} = loadmol2 {metal}.mol2\n")
         f.write("\n")
-        
+
         # Load anion mol2 files
         for anion in residues['anions']:
             f.write(f"{anion} = loadmol2 {anion}.mol2\n")
         f.write("\n")
-        
+
         # Load frcmod files for anions
         for anion in residues['anions']:
             f.write(f"loadamberparams {anion}.frcmod\n")
-        
+
         # Load ion parameters and main frcmod
         f.write("loadamberparams frcmod.ionslm_126_opc\n")
         f.write(f"loadamberparams {frcmod_file}\n")
         f.write("\n")
-        
+
         # Load PDB
         f.write(f"mol = loadpdb {pdb_basename}\n")
         f.write("\n")
-        
+
         # Write bond commands
         for bond in bonds:
             f.write(bond + "\n")
         f.write("\n")
-        
+
         # Save dry structure
         f.write(f"savepdb mol {output_prefix}_dry.pdb\n")
         f.write(f"saveamberparm mol {output_prefix}_dry.prmtop {output_prefix}_dry.inpcrd\n")
-        
-        # Solvation (if solvent library specified)
-        if solvent_lib:
-            f.write(f"loadoff {solvent_lib}\n")
-            # Extract solvent name from library filename
-            solvent_name = os.path.splitext(solvent_lib)[0]
-            f.write(f"solvateBox mol {solvent_name} {solvent_box_size}\n")
+
+        # Solvation
+        if solvent_lib and str(solvent_lib).lower() != "none":
+            if str(solvent_lib).lower() == "water":
+                # OPCBOX is provided by leaprc.water.opc (already sourced above).
+                box_name = "OPCBOX"
+            else:
+                f.write(f"loadoff {solvent_lib}\n")
+                box_name = os.path.splitext(os.path.basename(solvent_lib))[0]
+            f.write(f"solvateBox mol {box_name} {solvent_box_size}\n")
+            if neutralize:
+                # addions with target charge 0: adds whichever counterion is
+                # needed to bring the unit to neutrality; the other is a no-op.
+                f.write("addions mol Na+ 0\n")
+                f.write("addions mol Cl- 0\n")
             f.write(f"savepdb mol {output_prefix}_solv.pdb\n")
             f.write(f"saveamberparm mol {output_prefix}_solv.prmtop {output_prefix}_solv.inpcrd\n")
-        
+
         f.write("quit\n")
 
 
@@ -397,15 +413,24 @@ Examples:
                         help="Output tleap.in file (default: tleap.in)")
     parser.add_argument("-f", "--frcmod", default="munro.frcmod",
                         help="Main frcmod file name (default: munro.frcmod)")
-    parser.add_argument("--solvent", default=None,
-                        help="Solvent library file (e.g., dmso_acrylate.lib)")
+    parser.add_argument("--solvent", default="water",
+                        help="Solvent: 'water' (default, uses OPCBOX from "
+                             "leaprc.water.opc), 'none' to skip solvation, or "
+                             "a .lib filename for a custom solvent box "
+                             "(e.g., dmso_acrylate.lib).")
+    parser.add_argument("--no-solvate", action="store_true",
+                        help="Skip solvation; produce only dry topology. "
+                             "Equivalent to --solvent none.")
+    parser.add_argument("--no-neutralize", action="store_true",
+                        help="Don't emit `addions mol Na+/Cl- 0` after "
+                             "solvateBox (default: neutralize the net charge).")
     parser.add_argument("--box-size", type=float, default=15.0,
                         help="Solvent box size in Angstroms (default: 15.0)")
     parser.add_argument("--prefix", default="ori",
                         help="Output file prefix (default: ori)")
     parser.add_argument("--cutoff", type=float, default=3.0,
                         help="Metal-nitrogen distance cutoff in Angstroms (default: 3.0)")
-    
+
     args = parser.parse_args()
     
     # Validate input file
@@ -427,6 +452,8 @@ Examples:
     print(f"Identified {len(connectivity['y_atoms_map'])} coordinating nitrogens")
     print(f"Generated {len(connectivity['bond_info'])} metal-nitrogen bonds")
     
+    solvent_lib = "none" if args.no_solvate else args.solvent
+
     print(f"Writing tleap.in file: {args.output}")
     write_tleap_file(
         output_file=args.output,
@@ -434,9 +461,10 @@ Examples:
         pdb_data=pdb_data,
         connectivity=connectivity,
         frcmod_file=args.frcmod,
-        solvent_lib=args.solvent,
+        solvent_lib=solvent_lib,
         solvent_box_size=args.box_size,
-        output_prefix=args.prefix
+        output_prefix=args.prefix,
+        neutralize=not args.no_neutralize,
     )
     
     print(f"(U^(I)^U) tleap.in file saved to {args.output}")

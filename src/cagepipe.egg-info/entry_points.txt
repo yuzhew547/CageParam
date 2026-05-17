@@ -1,0 +1,9 @@
+[console_scripts]
+cagepipe-chgass = cagepipe.chgass:main
+cagepipe-gaff-typing = cagepipe.gaff_typing:main
+cagepipe-munro = cagepipe.munro:main
+cagepipe-pdb4munro = cagepipe.pdb4munro:main
+cagepipe-respfit = cagepipe.respfit:main
+cagepipe-seasoning = cagepipe.seasoning:main
+cagepipe-seasoning-inside = cagepipe.seasoning_inside:main
+cagepipe-tleapgen = cagepipe.tleapgen:main

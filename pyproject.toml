@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cagepipe"
+version = "0.1.0"
+description = "Metal-organic cage parametrization pipeline (AMBER GAFF2 + RESP, MUNRO atom types, tleap-ready)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Yuzhe Wang", email = "yuzhe547@mit.edu" }]
+keywords = ["amber", "gaff", "resp", "multiwfn", "metal-organic-cage", "snakemake"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+workflow = ["snakemake-minimal>=7.32"]
+
+[project.scripts]
+cagepipe-pdb4munro        = "cagepipe.pdb4munro:main"
+cagepipe-munro            = "cagepipe.munro:main"
+cagepipe-tleapgen         = "cagepipe.tleapgen:main"
+cagepipe-respfit          = "cagepipe.respfit:main"
+cagepipe-chgass           = "cagepipe.chgass:main"
+cagepipe-seasoning        = "cagepipe.seasoning:main"
+cagepipe-seasoning-inside = "cagepipe.seasoning_inside:main"
+cagepipe-gaff-typing      = "cagepipe.gaff_typing:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cagepipe = ["data/*.dat", "data/leaprc.*", "data/*.bak"]

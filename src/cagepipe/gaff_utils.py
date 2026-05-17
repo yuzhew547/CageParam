@@ -1,5 +1,6 @@
 class GaffDatabase:
     def __init__(self, gaff_dat_path):
+        self.bonds = {}     # Key: (t1, t2), Value: (k, eq)
         self.angles = {}  # Key: (t1, center, t2), Value: (k, eq)
         self.impropers = {} # Key: tuple(sorted(atoms)), Value: (k, phase, per)
         if gaff_dat_path:
@@ -14,13 +15,20 @@ class GaffDatabase:
                 parts = line.split()
                 if not parts: continue
 
+                # --- BOND (2 atoms) ---
+                if '-' in parts[0] and len(parts[0].split('-')) == 2:
+                    try:
+                        sub = parts[0].split('-')
+                        self.add_bond(sub[0], sub[1], float(parts[1]), float(parts[2]))
+                    except: pass
+
                 # --- ANGLE (3 atoms) ---
-                if '-' in parts[0] and len(parts[0].split('-')) == 3:
+                elif '-' in parts[0] and len(parts[0].split('-')) == 3:
                     try:
                         sub = parts[0].split('-')
                         self.add_angle(sub[0], sub[1], sub[2], float(parts[1]), float(parts[2]))
                     except: pass
-                
+
                 # --- IMPROPER (4 atoms) ---
                 elif '-' in parts[0] and len(parts[0].split('-')) == 4:
                     try:
@@ -40,12 +48,19 @@ class GaffDatabase:
                             self.add_improper(atoms, float(parts[4]), float(parts[5]), float(parts[6]))
                         except: pass
 
+    def add_bond(self, t1, t2, k, eq):
+        self.bonds[(t1, t2)] = (k, eq)
+        self.bonds[(t2, t1)] = (k, eq)
+
     def add_angle(self, t1, c, t2, k, eq):
         self.angles[(t1, c, t2)] = (k, eq)
         self.angles[(t2, c, t1)] = (k, eq)
 
     def add_improper(self, atoms, k, phase, per):
         self.impropers[tuple(atoms)] = (k, phase, per)
+
+    def search_bond(self, t1, t2):
+        return self.bonds.get((t1, t2))
 
     def search_angle(self, t1, center, t2):
         return self.angles.get((t1, center, t2))

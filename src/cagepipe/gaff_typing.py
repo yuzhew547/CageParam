@@ -75,9 +75,36 @@ def derive_prefix(pdb_path):
     return base
 
 
-def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff",
+_OBABEL_CANDIDATES = [
+    "/home/gridsan/ywang6/sft/build/bin/obabel",
+    "obabel",
+    "babel",
+]
+
+
+def _find_obabel():
+    return _which(_OBABEL_CANDIDATES)
+
+
+def _obabel_env():
+    env = os.environ.copy()
+    libdir = "/home/gridsan/ywang6/sft/build/lib"
+    datadir = "/home/gridsan/ywang6/sft/openbabel-openbabel-2-4-0/data"
+    if os.path.isdir(libdir):
+        env.setdefault("BABEL_LIBDIR", libdir)
+    if os.path.isdir(datadir):
+        env.setdefault("BABEL_DATADIR", datadir)
+    return env
+
+
+def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2",
                     extra_args=None, verbose=False):
-    """Run antechamber pdb -> mol2."""
+    """Run antechamber pdb -> mol2.
+
+    If antechamber's bondtype perception fails ("frozen atom" error on
+    certain ether O / ring N geometries), retry with an OpenBabel-converted
+    MOL2 as input — that seeds antechamber with explicit bonds and avoids
+    the full perception path."""
     exe = find_antechamber()
     if exe is None:
         raise RuntimeError(
@@ -87,34 +114,54 @@ def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff",
 
     pdb_abs = os.path.abspath(pdb_path)
     mol2_abs = os.path.abspath(mol2_path)
-    cmd = [
-        exe,
-        "-i", pdb_abs, "-fi", "pdb",
-        "-o", mol2_abs, "-fo", "mol2",
-        "-pf", "y",
-        "-nc", str(net_charge),
-        "-at", atom_type,
-    ]
-    if extra_args:
-        cmd.extend(extra_args)
 
-    work = tempfile.mkdtemp(prefix="ante_")
-    try:
+    def _run(in_path, in_fmt):
+        cmd = [
+            exe,
+            "-i", in_path, "-fi", in_fmt,
+            "-o", mol2_abs, "-fo", "mol2",
+            "-pf", "y",
+            "-nc", str(net_charge),
+            "-at", atom_type,
+        ]
+        if extra_args:
+            cmd.extend(extra_args)
+        work = tempfile.mkdtemp(prefix="ante_")
+        try:
+            if verbose:
+                print(f"    [antechamber] {' '.join(cmd)}")
+            return subprocess.run(cmd, cwd=work, capture_output=True, text=True)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    result = _run(pdb_abs, "pdb")
+    if result.returncode == 0 and os.path.isfile(mol2_abs):
+        return mol2_abs
+
+    obabel = _find_obabel()
+    if obabel is not None:
         if verbose:
-            print(f"    [antechamber] {' '.join(cmd)}")
-        result = subprocess.run(cmd, cwd=work, capture_output=True, text=True)
-        if result.returncode != 0 or not os.path.isfile(mol2_abs):
-            raise RuntimeError(
-                f"antechamber failed (rc={result.returncode}) on {pdb_path}\n"
-                f"--- stdout ---\n{result.stdout}\n"
-                f"--- stderr ---\n{result.stderr}"
-            )
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-    return mol2_abs
+            print(f"    [antechamber] PDB-direct failed (rc={result.returncode}); "
+                  f"retrying via OpenBabel-pre-bonded MOL2")
+        seed_mol2 = os.path.splitext(pdb_abs)[0] + ".obabel.mol2"
+        ob = subprocess.run(
+            [obabel, pdb_abs, "-omol2", f"-O{seed_mol2}"],
+            capture_output=True, text=True, env=_obabel_env(),
+        )
+        if ob.returncode == 0 and os.path.isfile(seed_mol2):
+            result2 = _run(seed_mol2, "mol2")
+            if result2.returncode == 0 and os.path.isfile(mol2_abs):
+                return mol2_abs
+            result = result2  # fall through to the error below with the latter result
+
+    raise RuntimeError(
+        f"antechamber failed (rc={result.returncode}) on {pdb_path}\n"
+        f"--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}"
+    )
 
 
-def run_parmchk2(mol2_path, frcmod_path, atom_type="gaff", verbose=False):
+def run_parmchk2(mol2_path, frcmod_path, atom_type="gaff2", verbose=False):
     """Run parmchk2 mol2 -> frcmod."""
     exe = find_parmchk2()
     if exe is None:
@@ -128,6 +175,8 @@ def run_parmchk2(mol2_path, frcmod_path, atom_type="gaff", verbose=False):
         "-i", mol2_abs, "-o", frcmod_abs,
         "-f", "mol2",
         "-s", atom_type,
+        "-a", "Y",  # emit ALL params used by the molecule, not just penalty>0
+                    # estimates. Keeps the frcmod self-contained.
     ]
     if verbose:
         print(f"    [parmchk2]    {' '.join(cmd)}")
@@ -149,7 +198,7 @@ def _is_cache_fresh(src, *outputs):
 
 
 def generate(template_pdb, mol2_out=None, frcmod_out=None,
-             net_charge=0, atom_type="gaff", force=False, verbose=False):
+             net_charge=0, atom_type="gaff2", force=False, verbose=False):
     """
     Run antechamber + parmchk2 on one template PDB. If both outputs are
     newer than the input PDB and `force` is False, this is a no-op.
@@ -178,7 +227,7 @@ def generate(template_pdb, mol2_out=None, frcmod_out=None,
 
 def generate_for_templates(template_pdbs, output_dir=".",
                            net_charge=0, charges_by_prefix=None,
-                           atom_type="gaff", force=False, verbose=False):
+                           atom_type="gaff2", force=False, verbose=False):
     """
     Process a list of template PDB files. For each, produce <prefix>.mol2 and
     <prefix>.frcmod under `output_dir`, where prefix is derived from the
@@ -234,9 +283,9 @@ Examples:
     parser.add_argument("--charge", nargs="+", default=[],
                         metavar="PREFIX:CHARGE",
                         help="Per-prefix charges, e.g. LA:0 LB:-1")
-    parser.add_argument("-at", "--atom-type", default="gaff",
+    parser.add_argument("-at", "--atom-type", default="gaff2",
                         choices=["gaff", "gaff2", "amber", "bcc", "sybyl", "amber14sb"],
-                        help="Atom-type style for antechamber/parmchk2 (default: gaff)")
+                        help="Atom-type style for antechamber/parmchk2 (default: gaff2)")
     parser.add_argument("-d", "--output-dir", default=".",
                         help="Where to write .mol2 / .frcmod (default: cwd)")
     parser.add_argument("--force", action="store_true",

@@ -1,0 +1,25 @@
+name: cagepipe
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.10
+  - numpy>=1.24
+  - pip
+  # External binaries called by the pipeline:
+  - ambertools>=23      # tleap, antechamber, parmchk2, sqm
+  - openbabel>=3.1      # obabel — used by pdb4munro for XYZ->PDB and by gaff_typing as a fallback bond-perceiver
+  # Workflow runner:
+  - snakemake-minimal>=7.32
+  - pip:
+    - -e ..             # editable install of cagepipe itself (pyproject.toml in parent dir)
+
+# ------------------------------------------------------------------
+# NOT installed by this env (closed-source / out-of-band):
+#   - Multiwfn       https://sobereva.com/multiwfn/  (download the noGUI Linux build)
+#                    Export CAGEPIPE_MULTIWFN=/path/to/Multiwfn_noGUI before running
+#                    `cagepipe-respfit`, or pass --multiwfn on the CLI.
+#
+# Optional QM front-ends (used only if you regenerate moldens yourself):
+#   - Gaussian / ORCA / Psi4 — install separately.
+# ------------------------------------------------------------------

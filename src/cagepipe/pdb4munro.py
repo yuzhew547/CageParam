@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-pdb4munro.py - Auto-detect ligands and produce bone.pdb
+pdb4munro.py - Auto-detect ligands and produce bone.pdb (+ optional MOL2s).
 
 Reads a system file (.pdb or .xyz; XYZ is converted via OpenBabel),
 identifies discrete ligand fragments by graph connectivity (the BOND_CUTOFF
@@ -8,6 +8,14 @@ of 1.90 A naturally excludes metal-ligand bonds such as Pd-N at ~2.0 A),
 clusters the fragments into unique types via graph isomorphism, and writes:
   - <prefix>tempK_template.pdb for each unique ligand type
   - bone.pdb with metals separated and ligands renamed
+
+If --chg <file> is supplied, this also drives the mol2gen helper:
+  - antechamber is run on each template PDB to obtain Sybyl atom types and
+    explicit bond orders (template MOL2 files);
+  - mol2gen_helper then matches every PDB residue and CHG molecule to a
+    template, averages RESP charges per template atom, applies MUNRO
+    overrides on metals/coordinating N, and writes one <resname>.mol2 per
+    residue (LA1.mol2, LB1.mol2, P1.mol2, ...).
 """
 import os
 import sys
@@ -18,11 +26,15 @@ from collections import defaultdict
 
 # ==================== CONFIGURATION ====================
 BOND_CUTOFF = 1.90  # Angstrom; organic bonds, Pd-N (~2.0 A) excluded
-METAL_ELEMENTS = {"PD", "PT", "AU", "AG", "NI", "CU", "ZN", "FE", "CO", "RU", "RH", "IR"}
+METAL_ELEMENTS = {"PD", "PT"}
 OBABEL_CANDIDATES = [
     "/home/gridsan/ywang6/sft/build/bin/obabel",
     "obabel",
     "babel",
+]
+ANTECHAMBER_CANDIDATES = [
+    "/home/gridsan/ywang6/.conda/envs/AmberTools25/bin/antechamber",
+    "antechamber",
 ]
 # =======================================================
 
@@ -68,6 +80,92 @@ def xyz_to_pdb(xyz_path, pdb_path):
             f"obabel failed (rc={res.returncode}):\n"
             f"STDOUT: {res.stdout}\nSTDERR: {res.stderr}"
         )
+
+
+def find_antechamber():
+    for p in ANTECHAMBER_CANDIDATES:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+        which = shutil.which(p)
+        if which:
+            return which
+    return None
+
+
+def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2"):
+    """Run antechamber on a template PDB to produce a typed MOL2 with bonds.
+
+    If antechamber's bondtype perception fails (it errors on certain ether
+    O / aromatic N geometries with `The frozen atom type can only be ...`),
+    retry by first converting PDB->MOL2 via OpenBabel (which seeds antechamber
+    with explicit bonds, sidestepping bondtype's full perception)."""
+    antech = find_antechamber()
+    if antech is None:
+        raise RuntimeError(
+            "antechamber not found. Update ANTECHAMBER_CANDIDATES or "
+            "activate an AmberTools env."
+        )
+
+    def _run(in_path, in_fmt):
+        cmd = [
+            antech,
+            "-i", in_path, "-fi", in_fmt,
+            "-o", mol2_path, "-fo", "mol2",
+            "-at", atom_type,
+            "-nc", str(net_charge),
+            "-pf", "y",
+            "-dr", "no",
+        ]
+        print(f"   running: {' '.join(cmd)}")
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    res = _run(pdb_path, "pdb")
+    if res.returncode == 0 and os.path.isfile(mol2_path):
+        return
+
+    # Fallback: convert PDB->MOL2 via OpenBabel, then antechamber on that.
+    print(f"   antechamber failed on PDB (rc={res.returncode}); "
+          f"retrying via OpenBabel-pre-bonded MOL2")
+    obabel = find_obabel()
+    if obabel is None:
+        raise RuntimeError(
+            f"antechamber failed (rc={res.returncode}) on {pdb_path}; "
+            f"OpenBabel fallback unavailable.\n"
+            f"STDOUT: {res.stdout}\nSTDERR: {res.stderr}"
+        )
+    seed_mol2 = os.path.splitext(pdb_path)[0] + ".obabel.mol2"
+    ob = subprocess.run(
+        [obabel, pdb_path, "-omol2", f"-O{seed_mol2}"],
+        capture_output=True, text=True, env=obabel_env(),
+    )
+    if ob.returncode != 0 or not os.path.isfile(seed_mol2):
+        raise RuntimeError(
+            f"OpenBabel pdb->mol2 failed (rc={ob.returncode}) on {pdb_path}:\n"
+            f"STDOUT: {ob.stdout}\nSTDERR: {ob.stderr}"
+        )
+    res2 = _run(seed_mol2, "mol2")
+    if res2.returncode != 0 or not os.path.isfile(mol2_path):
+        raise RuntimeError(
+            f"antechamber failed via both paths on {pdb_path}.\n"
+            f"PDB-direct STDOUT: {res.stdout}\nPDB-direct STDERR: {res.stderr}\n"
+            f"OBabel-seed STDOUT: {res2.stdout}\nOBabel-seed STDERR: {res2.stderr}"
+        )
+
+
+def parse_ligand_charges(spec, n_templates):
+    """Parse --ligand-nc into a list of n_templates ints. Accepts a single
+    int (applied to all) or a comma-separated list (one per template)."""
+    if spec is None:
+        return [0] * n_templates
+    parts = [p.strip() for p in str(spec).split(',') if p.strip() != ""]
+    if len(parts) == 1:
+        return [int(parts[0])] * n_templates
+    if len(parts) != n_templates:
+        raise ValueError(
+            f"--ligand-nc has {len(parts)} value(s) but {n_templates} template(s) "
+            f"were detected. Pass either one value or one per template."
+        )
+    return [int(p) for p in parts]
 
 
 def parse_pdb(filename):
@@ -192,13 +290,15 @@ def find_connected_components(atoms, adj):
 
 
 def auto_rename_by_element(atoms):
-    """Rename atoms in place to C1, C2, N1, ..., H1, ..."""
+    """Rename atoms in place to C1, C2, N1, ..., H1, ...
+    Names are uppercase to match mol2gen_helper.clean(), which uppercases
+    atom names when writing per-residue MOL2 files; tleap is case-sensitive,
+    so a Cl1 in bone.pdb against CL1 in L*.mol2 fails to type."""
     counts = defaultdict(int)
     for atom in atoms:
         el = atom['element'].upper()
-        prefix = el.title() if len(el) > 1 else el
         counts[el] += 1
-        atom['name'] = f"{prefix}{counts[el]}"
+        atom['name'] = f"{el}{counts[el]}"
 
 
 def discover_templates(ligand_fragments):
@@ -301,6 +401,17 @@ Examples:
                         default='auto',
                         help='auto: LA/LB/LC/LD per template type; '
                              'sequential: L1, L2, L3, ...')
+    parser.add_argument('--chg',
+                        help='Optional CHG file (RESP charges from respfit.py). '
+                             'When given, antechamber is run on each template '
+                             'PDB and per-residue MOL2 files are generated '
+                             'via mol2gen_helper.')
+    parser.add_argument('--ligand-nc', dest='ligand_nc', default=None,
+                        help='Net charge for antechamber. Single int applied '
+                             'to all templates, or comma-separated list with '
+                             'one value per template (default: 0).')
+    parser.add_argument('--at', dest='atom_type', default='gaff2',
+                        help='antechamber -at value (default: gaff2).')
     parser.add_argument('--debug', action='store_true', help='Verbose output')
     args = parser.parse_args()
 
@@ -419,6 +530,44 @@ Examples:
     output_lines.append("END\n")
     with open(args.output, 'w') as f:
         f.writelines(output_lines)
+
+    # 6b. If a CHG file is provided, run antechamber on each template PDB
+    #     and call mol2gen_helper to emit per-residue MOL2 files.
+    if args.chg:
+        print("\n5. CHG branch: typing templates with antechamber")
+        if not os.path.isfile(args.chg):
+            print(f"   ERROR: CHG file not found: {args.chg}")
+            sys.exit(1)
+
+        try:
+            ligand_ncs = parse_ligand_charges(args.ligand_nc, len(templates))
+        except ValueError as e:
+            print(f"   ERROR: {e}")
+            sys.exit(1)
+
+        template_mol2_paths = []
+        for tpl in templates:
+            prefix = get_residue_prefix(tpl['index'], len(templates))
+            pdb_path = f"{prefix}{tpl['name']}_template.pdb"
+            mol2_path = f"{prefix}{tpl['name']}_template.mol2"
+            nc = ligand_ncs[tpl['index']]
+            print(f"   {pdb_path} (nc={nc}) -> {mol2_path}")
+            run_antechamber(pdb_path, mol2_path,
+                            net_charge=nc, atom_type=args.atom_type)
+            template_mol2_paths.append(mol2_path)
+
+        print("\n6. CHG branch: writing per-residue MOL2 files")
+        # Lazy import: only needed when --chg is given.
+        try:
+            from . import mol2gen_helper            # package mode
+        except ImportError:
+            import mol2gen_helper                   # script-mode fallback
+        mol2gen_helper.generate_mol2_files(
+            pdb_path=args.output,
+            chg_path=args.chg,
+            template_mol2s=template_mol2_paths,
+            debug=args.debug,
+        )
 
     # 7. Summary
     print("\n" + "=" * 70)

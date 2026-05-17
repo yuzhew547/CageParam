@@ -1,0 +1,42 @@
+# cagepipe Snakefile — per-cage AMBER parametrization.
+#
+# Run from a cage directory (`cd <cage_id>; snakemake --cores 1`), or pass
+# `-d <cage_id>` to a snakemake invoked elsewhere. The DAG walks backwards
+# from `ori_dry.prmtop`, so:
+#
+#   * If inputfile.chg is missing but scr_1/inputfile.molden is present, the
+#     `resp` rule fires (requires Multiwfn).
+#   * Otherwise the chain is pdb4munro -> munro -> tleapgen -> tleap.
+#
+# Use `--config cage_dir=<path>` to point at a cage directory explicitly,
+# or `snakemake -d <path>`.
+
+from snakemake.utils import min_version
+min_version("7.32")
+
+configfile: workflow.source_path("../config/config.yaml")
+
+def _join(cage, name):
+    """Path helper: when CAGE is '' or '.', emit a bare filename (Snakemake
+    discourages './' prefixes and warns about them)."""
+    if not cage or cage == ".":
+        return name
+    return f"{cage}/{name}"
+
+# Optional override: snakemake --config cage_dir=/path/to/cage
+CAGE = config.get("cage_dir", ".")
+PREFIX = config.get("prefix", "ori")
+GAFF = config.get("gaff", "")          # blank => munro picks bundled gaff2.dat
+MULTIWFN = config.get("multiwfn", "")  # blank => respfit picks $CAGEPIPE_MULTIWFN or hard default
+
+include: "rules/resp.smk"
+include: "rules/dry.smk"
+include: "rules/solvate.smk"
+
+
+rule all:
+    """Default target: produce the dry parameterized system."""
+    input:
+        _join(CAGE, f"{PREFIX}_dry.prmtop"),
+        _join(CAGE, f"{PREFIX}_dry.inpcrd"),
+        _join(CAGE, f"{PREFIX}_dry.pdb"),
