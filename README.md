@@ -1,133 +1,85 @@
 # cagepipe
 
-AMBER GAFF2 parametrization pipeline for metal-organic cages (Pd/Pt M2L4, M6L12, M12L24).
-Produces tleap-ready force-field files (`ori_dry.prmtop`, `ori_dry.inpcrd`) from a cage
-geometry (`inputfile.xyz`) and RESP charges (`inputfile.chg`).
+This package provides an automated workflow for parameterizing metal–organic cages (MOCs) in AMBER, including Pd/Pt-based assemblies such as M₂L₄, M₆L₁₂, and M₁₂L₂₄ cages (M=Pd/Pt). Starting from an optimized cage geometry (cage.xyz) and DFT-generated electronic structure data, the toolkit transfers existing force-field parameters template to the target cage, derives RESP atomic charges from Molden files, and assigns the charges to MOL2 files.
 
-## What it does
+The package prepares AMBER-compatible simulation inputs by automatically generating tleap.in files for system construction and setup. It also supports addition of counterions, placement of guest molecules inside the cage cavity, and generation of cntl files for [alchemical free-energy calculations](https://github.com/Gallicchio-Lab/AToM-OpenMM).
 
-Per-cage chain (also expressed as a Snakemake DAG in `workflow/Snakefile`):
 
-```
-scr_1/inputfile.molden     # optional QM molden (Gaussian/Psi4/ORCA)
-        |
-        | respfit  (Multiwfn 2-stage RESP)
-        v
-inputfile.xyz + inputfile.chg
-        |
-        | pdb4munro  (OpenBabel for XYZ->PDB; antechamber for Sybyl types)
-        v
-bone.pdb + LA*.mol2, P*.mol2, Ltemp*_template.{pdb,mol2}
-        |
-        | munro --auto-from-pdb  (uses bundled gaff2.dat)
-        v
-munro.frcmod (+ ligand .frcmod files)
-        |
-        | tleapgen
-        v
-tleap.in
-        |
-        | tleap -s -f tleap.in
-        v
-ori_dry.{pdb,prmtop,inpcrd}
-```
+## Installation
 
-## Install
-
-### TL;DR
+### Install via mamba (recommended):
 
 ```bash
-mamba env create -f envs/cagepipe.yaml      # ~2 min with mamba; classic conda solver takes 30+ min
+mamba env create -f envs/cagepipe.yaml       
 conda activate cagepipe
-pip install -e .                            # only if the env file's `-e ..` didn't run
 ```
-
-### Use mamba, not classic conda
-
-The env pulls AmberTools, OpenBabel, and Snakemake from `conda-forge`+`bioconda`,
-which is a large solve. The classic conda solver (`conda` ≤ 23.x without the
-libmamba plugin) can spin for tens of minutes or appear to hang. Always prefer
-`mamba` (or `conda` with `--solver=libmamba`):
+### Install via conda (slower):
 
 ```bash
-mamba env create -f envs/cagepipe.yaml
-# or, if you must stick with conda:
-conda env create --solver=libmamba -f envs/cagepipe.yaml
-```
-
-On LLgrid the module `anaconda/python-LLM-2023b` already ships `mamba 1.4.2`, so
-no extra setup is required.
-
-### Python version pin (important)
-
-The env file pins `python>=3.10,<3.13`. **Do not relax this to allow 3.13**:
-OpenBabel on conda-forge currently has no Python 3.13 build, and the solver will
-either fail or chew through every backtrack combination looking for a phantom
-compatible release. If you already created an env with Python 3.13 and want to
-salvage it:
-
-```bash
-mamba install -n <env> python=3.12 "openbabel>=3.1" "snakemake-minimal>=7.32"
-```
-
-This downgrades Python in place and rebuilds the py-bound packages (ambertools,
-numpy, pandas, parmed, ...) against 3.12.
-
-### Editable install of cagepipe itself
-
-The env file lists `- -e ..` under `pip:`, which installs cagepipe from this
-directory in editable mode. That step is what registers the console scripts
-(`pdb4munro`, `munro`, `tleapgen`, `respfit`, `chgass`, `seasoning`, `filling`,
-`gaff-typing`) on `$PATH`. If you create the env manually (e.g. you ran
-`mamba install` instead of `mamba env create -f ...`), run the pip install
-yourself from this directory:
-
-```bash
+conda env create -f envs/cagepipe.yaml       
 conda activate cagepipe
-cd /path/to/cagepipe       # the directory with pyproject.toml
-pip install -e .
 ```
-
-Verify the install:
+### Verify the install:
 
 ```bash
 which pdb4munro munro tleapgen respfit obabel tleap snakemake
 # all paths should be inside $CONDA_PREFIX/bin
 ```
 
-If `which obabel` or `which snakemake` returns something under `~/.local/bin`
-or `~/sft/`, your user `PATH` is shadowing the env binaries. Either reorder
-`PATH` so `$CONDA_PREFIX/bin` comes first, or call them via the full env path.
+### Multiwfn (optional— install separately)
 
-### Updating an existing env
-
-Re-running `mamba env create` on an existing env fails. Use:
+If you wish to use this package to fit the resp charge, you need to install [Multiwfn](https://sobereva.com/multiwfn/) separately. Download the noGUI Linux build and point cagepipe at it via either:
 
 ```bash
-mamba env update -n cagepipe -f envs/cagepipe.yaml --prune
-```
-
-`--prune` removes packages that were dropped from the yaml.
-
-## Multiwfn (closed-source — install separately)
-
-The RESP step uses [Multiwfn](https://sobereva.com/multiwfn/). Download the noGUI
-Linux build and point cagepipe at it via either:
-
-```bash
+# export the path and add it to .bashrc
 export CAGEPIPE_MULTIWFN=/path/to/Multiwfn_noGUI
-# or
+
+# or when you need to specify the path of multiwfn everytime when you run respfit command
 respfit ... --multiwfn /path/to/Multiwfn_noGUI
+
 # or, in Snakemake:
 snakemake --config multiwfn=/path/to/Multiwfn_noGUI ...
 ```
 
-## Usage
+## Basic Usage
 
-### Option 1: direct CLI chain
+Use -h/--help to check how to use these commands. Here the most important functions are shown here.
+
+### respfit: RESP charge fitting
+
+### pdb4munro: PDB file preparation and mol2 file generation for tleap file
 
 ```bash
-cd <cage_dir>     # must contain inputfile.xyz and inputfile.chg
+pdb4munro input [-o OUTPUT] [--chg CHG]
+# Required arguments: input: input cage coordinates (pdb format or xyz file)
+# Optional arguments: [-o OUTPUT] Output pdb file name of the cage system; [--chg CHG] resp charge file
+# Example: pdb4munro input.xyz -o bone.pdb --chg input.chg
+```
+
+### seasoning: place one guest molecule inside the cage or multiple counterions around the cage
+
+### munro: generate frcmod file for MOCs
+
+```bash
+munro -p PDB 
+```
+
+### tleapgen: generate tleap file to system
+
+```bash
+tleapgen -p PDB [-o OUTPUT] [--solvent SOLVENT]
+# Required arguments: -p PDB: input pdb file
+```
+
+### cntlgen: generate cntl file for alchemical transfer method
+
+```bash
+cntlgen [--pdb PDB] [--resname RESNAME] [--out OUT]
+# Optional arguments: [--pdb PDB] input system coordinates; [--resname RESNAME] resp charge file; [-o OUTPUT] Output cntl file name.
+# Example: cntlgen cage_solv.pdb -out bone.pdb -resname GS1
+```
+
+```bash
 # Either run the four stages individually:
 pdb4munro inputfile.xyz --chg inputfile.chg
 munro     -p bone.pdb --auto-from-pdb
@@ -154,7 +106,7 @@ snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_di
 
 ### Option 3: ATM cntl generation
 
-After solvation (`gus_solv.pdb` exists with cage + guest + counterions + water),
+After solvation (`cage_solv.pdb` exists with cage + guest + counterions + water),
 build the ATM control file:
 
 ```bash
