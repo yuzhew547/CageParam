@@ -47,6 +47,16 @@ Use -h/--help to check how to use these commands. Here the most important functi
 
 ### respfit: RESP charge fitting
 
+respfit command can autodetect the integraty of the cage molecule. For small cage, it will average the charge of same ligand and keep the charge difference in different ligand (heteroleptic cages). For large system, it will take forvever to get molden file/fit the charge. User can use ML4 fragment to parametrize the system. The respfit will compute the charge difference of the ligand before and after bind one metal and apply the difference to both side of the ligand. The charge of the metal will be applied to all metal centers.
+
+```bash
+respfit [-o OUTPUT] molden
+# Required arguments: molden molden file for the cage obtained from DFT calculation
+# Optional arguments: [-o OUTPUT] Output chg file name of the cage system;
+# Example: prespfit input.molden -o input.chg
+```
+Note: some cages have very large size. You may need to submit a jobscript to do this. The script support
+
 ### pdb4munro: PDB file preparation and mol2 file generation for tleap file
 
 ```bash
@@ -58,33 +68,38 @@ pdb4munro input [-o OUTPUT] [--chg CHG]
 
 ### seasoning: place one guest molecule inside the cage or multiple counterions around the cage
 
+```bash
+seasoning
+# seasoning is an interactive script.
+```
+
 ### munro: generate frcmod file for MOCs
 
 ```bash
-munro -p PDB 
+munro -p PDB [-o OUTPUT]
+# Required arguments: input: input cage pdb file
+# Optional arguments:[-o OUTPUT]: output frcmod file name;
 ```
 
 ### tleapgen: generate tleap file to system
 
 ```bash
-tleapgen -p PDB [-o OUTPUT] [--solvent SOLVENT]
-# Required arguments: -p PDB: input pdb file
+tleapgen -p PDB [-o OUTPUT] [--solvent SOLVENT] [-f FRCMOD]
+# Required arguments: -p PDB: input pdb file 
+# Optional arguments:[-o OUTPUT]: output file name; [-f FRCMOD] frcmod file name; [--solvent SOLVENT] solvent for the system
+# (default: water or you can put the lib file name here for custom solvent box. None means no solvent)
+# Example: tleapgen -p tastybone.pdb -o tleap.in -f munro.frcmod --solvent None
 ```
 
 ### cntlgen: generate cntl file for alchemical transfer method
 
 ```bash
 cntlgen [--pdb PDB] [--resname RESNAME] [--out OUT]
-# Optional arguments: [--pdb PDB] input system coordinates; [--resname RESNAME] resp charge file; [-o OUTPUT] Output cntl file name.
+# Optional arguments: [--pdb PDB] input system pdb file; [--resname RESNAME] residue name of the guest molecule; [-o OUTPUT] Output cntl file name.
 # Example: cntlgen cage_solv.pdb -out bone.pdb -resname GS1
 ```
 
 ```bash
-# Either run the four stages individually:
-pdb4munro inputfile.xyz --chg inputfile.chg
-munro     -p bone.pdb --auto-from-pdb
-tleapgen  -p bone.pdb -o tleap.in
-tleap -s -f tleap.in
 # Or use the bundled wrapper:
 bash /path/to/cagepipe/scripts/run_pipeline.sh
 ```
@@ -102,61 +117,7 @@ done; wait
 
 # Dry-run the DAG without executing anything
 snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_dir> -n
-```
 
-### Option 3: ATM cntl generation
-
-After solvation (`cage_solv.pdb` exists with cage + guest + counterions + water),
-build the ATM control file:
-
-```bash
-cd <cage_dir>
-cntlgen                          # PDB=gus_solv.pdb, guest resname=GS1 (filling default)
-cntlgen --resname BFA            # legacy systems where BFA is the guest
-cntlgen --template my.cntl       # use a custom template (only atom-list fields are rewritten)
-```
-
-`cntlgen` writes 0-based atom indices for `LIGAND_ATOMS`, `LIGAND_CM_ATOMS`,
-`RCPT_CM_ATOMS`, and `POS_RESTRAINED_ATOMS`; all other ATM settings come from the
-template. Receptor atoms are anything that is not the guest, not water (HOH,
-WAT, T3P, T4P, T5P, OPC, OPC3, SOL, TIP*), not a monatomic ion (Na+, Cl-, K+,
-...), and not a `seasoning` counterion (BFA..BFZ, BGA..). `POS_RESTRAINED_ATOMS`
-picks up receptor residues whose names start with `P` or `M` (the metal centers
-— override with `--metal-prefix`).
-
-## Console scripts
-
-| Name | Purpose |
-| --- | --- |
-| `pdb4munro`      | XYZ/PDB → `bone.pdb` + per-residue `*.mol2` + ligand templates |
-| `munro`          | `bone.pdb` + GAFF → `munro.frcmod` (auto-runs antechamber+parmchk2) |
-| `tleapgen`       | `bone.pdb` → `tleap.in` |
-| `respfit`        | molden → `inputfile.chg` (whole-cage or differential RESP) |
-| `chgass`         | per-residue MOL2s from pre-charged templates (M12L24 cleanup) |
-| `seasoning`      | place N anions around the cage (random shells outside cavity) |
-| `filling`        | parametrize a guest (.pdb or .xyz; `--autoparam` runs antechamber + parmchk2), place 1 copy (default resname `GS1`) inside the cavity, and optionally also place `--counterions N` BFA/BFB/... outside (subsumes `seasoning`) |
-| `gaff-typing`    | run antechamber + parmchk2 on template PDB(s) |
-| `cntlgen`        | generate `gus_solv.cntl` for ATM from a solvated PDB; auto-fills `LIGAND_ATOMS`, `RCPT_CM_ATOMS`, and `POS_RESTRAINED_ATOMS` (0-based) by residue-name classification (guest defaults to `GS1`) |
-
-## Package layout
-
-```
-cagepipe/
-├── pyproject.toml           # pip-installable package definition
-├── envs/cagepipe.yaml       # conda environment (AmberTools, OpenBabel, snakemake, cagepipe)
-├── workflow/                # Snakemake workflow
-│   ├── Snakefile
-│   └── rules/{resp,dry,solvate}.smk
-├── config/config.yaml       # workflow defaults; override via --config k=v
-├── src/cagepipe/            # Python package
-│   ├── __init__.py
-│   ├── *.py                 # pdb4munro, munro, tleapgen, respfit, chgass, ...
-│   └── data/                # gaff2.dat, gaff.dat, leaprc.gaff2 (bundled)
-└── scripts/                 # legacy bash wrappers (kept for back-compat)
-    ├── run_pipeline.sh
-    ├── respfit.sh
-    └── respfit_cage.sh
-```
 
 ## Notes / quirks
 
