@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python>=3.10
+  - python>=3.10,<3.13   # openbabel on conda-forge has no py3.13 build yet
   - numpy>=1.24
   - pip
   # External binaries called by the pipeline:
@@ -18,7 +18,7 @@ dependencies:
 # NOT installed by this env (closed-source / out-of-band):
 #   - Multiwfn       https://sobereva.com/multiwfn/  (download the noGUI Linux build)
 #                    Export CAGEPIPE_MULTIWFN=/path/to/Multiwfn_noGUI before running
-#                    `cagepipe-respfit`, or pass --multiwfn on the CLI.
+#                    `respfit`, or pass --multiwfn on the CLI.
 #
 # Optional QM front-ends (used only if you regenerate moldens yourself):
 #   - Gaussian / ORCA / Psi4 — install separately.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the cagepipe dry-parametrization pipeline in the current cage directory.
 # Requires: inputfile.xyz + inputfile.chg in cwd; the `cagepipe` conda env active
-# (which provides tleap + the cagepipe-* console scripts via `pip install -e .`).
+# (which provides tleap + the cagepipe console scripts via `pip install -e .`).
 #
 # Two ways to use this script:
 #   1. Direct CLI chain (this script, original behavior preserved):
@@ -18,7 +18,7 @@ if [[ "${CAGEPIPE_AUTO_ACTIVATE:-0}" == "1" ]]; then
   conda activate cagepipe
 fi
 
-for bin in cagepipe-pdb4munro cagepipe-munro cagepipe-tleapgen tleap; do
+for bin in pdb4munro munro tleapgen tleap; do
   command -v "$bin" >/dev/null 2>&1 || { echo "ERROR: '$bin' not on PATH. Did you 'conda activate cagepipe' and 'pip install -e <cagepipe>'?" >&2; exit 1; }
 done
 
@@ -29,14 +29,14 @@ if [[ ! -f inputfile.chg ]]; then
   echo "ERROR: inputfile.chg not found in $PWD" >&2; exit 1
 fi
 
-echo "===== [1/4] cagepipe-pdb4munro ====="
-cagepipe-pdb4munro inputfile.xyz --chg inputfile.chg
+echo "===== [1/4] pdb4munro ====="
+pdb4munro inputfile.xyz --chg inputfile.chg
 
-echo "===== [2/4] cagepipe-munro --auto-from-pdb ====="
-cagepipe-munro -p bone.pdb --auto-from-pdb       # GAFF auto-resolves to bundled gaff2.dat
+echo "===== [2/4] munro --auto-from-pdb ====="
+munro -p bone.pdb --auto-from-pdb       # GAFF auto-resolves to bundled gaff2.dat
 
-echo "===== [3/4] cagepipe-tleapgen ====="
-cagepipe-tleapgen -p bone.pdb -o tleap.in
+echo "===== [3/4] tleapgen ====="
+tleapgen -p bone.pdb -o tleap.in
 
 echo "===== [4/4] tleap -s -f tleap.in ====="
 tleap -s -f tleap.in

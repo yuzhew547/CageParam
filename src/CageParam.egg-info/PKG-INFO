@@ -1,3 +1,19 @@
+Metadata-Version: 2.4
+Name: CageParam
+Version: 0.1.0
+Summary: Metal organic cage parametrization toolkit.
+Author-email: Yuzhe Wang <yuzhe547@mit.edu>
+License: MIT
+Keywords: amber,gaff,resp,multiwfn,metal organic cage
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Classifier: Operating System :: POSIX :: Linux
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Provides-Extra: workflow
+Requires-Dist: snakemake-minimal>=7.32; extra == "workflow"
+
 # cagepipe
 
 AMBER GAFF2 parametrization pipeline for metal-organic cages (Pd/Pt M2L4, M6L12, M12L24).
@@ -152,26 +168,6 @@ done; wait
 snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_dir> -n
 ```
 
-### Option 3: ATM cntl generation
-
-After solvation (`gus_solv.pdb` exists with cage + guest + counterions + water),
-build the ATM control file:
-
-```bash
-cd <cage_dir>
-cntlgen                          # PDB=gus_solv.pdb, guest resname=GS1 (filling default)
-cntlgen --resname BFA            # legacy systems where BFA is the guest
-cntlgen --template my.cntl       # use a custom template (only atom-list fields are rewritten)
-```
-
-`cntlgen` writes 0-based atom indices for `LIGAND_ATOMS`, `LIGAND_CM_ATOMS`,
-`RCPT_CM_ATOMS`, and `POS_RESTRAINED_ATOMS`; all other ATM settings come from the
-template. Receptor atoms are anything that is not the guest, not water (HOH,
-WAT, T3P, T4P, T5P, OPC, OPC3, SOL, TIP*), not a monatomic ion (Na+, Cl-, K+,
-...), and not a `seasoning` counterion (BFA..BFZ, BGA..). `POS_RESTRAINED_ATOMS`
-picks up receptor residues whose names start with `P` or `M` (the metal centers
-— override with `--metal-prefix`).
-
 ## Console scripts
 
 | Name | Purpose |
@@ -184,7 +180,6 @@ picks up receptor residues whose names start with `P` or `M` (the metal centers
 | `seasoning`      | place N anions around the cage (random shells outside cavity) |
 | `filling`        | parametrize a guest (.pdb or .xyz; `--autoparam` runs antechamber + parmchk2), place 1 copy (default resname `GS1`) inside the cavity, and optionally also place `--counterions N` BFA/BFB/... outside (subsumes `seasoning`) |
 | `gaff-typing`    | run antechamber + parmchk2 on template PDB(s) |
-| `cntlgen`        | generate `gus_solv.cntl` for ATM from a solvated PDB; auto-fills `LIGAND_ATOMS`, `RCPT_CM_ATOMS`, and `POS_RESTRAINED_ATOMS` (0-based) by residue-name classification (guest defaults to `GS1`) |
 
 ## Package layout
 

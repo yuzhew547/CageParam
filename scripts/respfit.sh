@@ -17,5 +17,5 @@
 
 module load multiwfn/noGUI
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-# Requires the `cagepipe` conda env (provides cagepipe-respfit on PATH).
-cagepipe-respfit input.molden -o input.chg --keep-aux
+# Requires the `cagepipe` conda env (provides respfit on PATH).
+respfit input.molden -o input.chg --keep-aux

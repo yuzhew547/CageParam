@@ -426,8 +426,8 @@ Examples:
                              "solvateBox (default: neutralize the net charge).")
     parser.add_argument("--box-size", type=float, default=15.0,
                         help="Solvent box size in Angstroms (default: 15.0)")
-    parser.add_argument("--prefix", default="ori",
-                        help="Output file prefix (default: ori)")
+    parser.add_argument("--prefix", default="cage",
+                        help="Output file prefix (default: cage)")
     parser.add_argument("--cutoff", type=float, default=3.0,
                         help="Metal-nitrogen distance cutoff in Angstroms (default: 3.0)")
 

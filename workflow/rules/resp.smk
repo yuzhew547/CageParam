@@ -18,10 +18,10 @@ rule respfit:
         r"""
         cd "{params.cage}"
         if [ -n "{params.multiwfn}" ]; then
-            cagepipe-respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux \
+            respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux \
                 --multiwfn "{params.multiwfn}" --nthreads {threads}
         else
-            cagepipe-respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux \
+            respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux \
                 --nthreads {threads}
         fi
         """

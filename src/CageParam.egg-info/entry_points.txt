@@ -1,5 +1,6 @@
 [console_scripts]
 chgass = cagepipe.chgass:main
+cntlgen = cagepipe.cntlgen:main
 filling = cagepipe.seasoning_inside:main
 gaff-typing = cagepipe.gaff_typing:main
 munro = cagepipe.munro:main

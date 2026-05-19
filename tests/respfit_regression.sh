@@ -8,7 +8,7 @@
 #SBATCH --mem=48G
 #SBATCH --export=ALL
 #
-# One-off regression test for the new cagepipe-respfit console script.
+# One-off regression test for the new respfit console script.
 # Reads scr_1/inputfile.molden and writes inputfile.chg.respfit_test_<ts>
 # in the cage dir. Does NOT touch the existing inputfile.chg.
 #
@@ -25,7 +25,7 @@ OUT_CHG="inputfile.chg.respfit_test_${TS}"
 source /state/partition1/llgrid/pkg/anaconda/python-LLM-2023b/etc/profile.d/conda.sh
 conda activate AmberTools25
 
-# The cagepipe-respfit script is in ~/.local/bin (from `pip install -e .` we ran).
+# The respfit script is in ~/.local/bin (from `pip install -e .` we ran).
 export PATH="$HOME/.local/bin:$PATH"
 
 module load multiwfn/noGUI || true   # tolerate missing module on dev nodes
@@ -33,11 +33,11 @@ module load multiwfn/noGUI || true   # tolerate missing module on dev nodes
 echo "[regression] Job started $(date)"
 echo "[regression] PWD=$PWD"
 echo "[regression] OUT_CHG=$OUT_CHG"
-echo "[regression] which cagepipe-respfit: $(command -v cagepipe-respfit || echo MISSING)"
+echo "[regression] which respfit: $(command -v respfit || echo MISSING)"
 echo "[regression] which Multiwfn_noGUI: $(command -v Multiwfn_noGUI || echo MISSING)"
 echo "[regression] SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK"
 
-cagepipe-respfit scr_1/inputfile.molden -o "$OUT_CHG" --keep-aux
+respfit scr_1/inputfile.molden -o "$OUT_CHG" --keep-aux
 
 echo "[regression] Job finished $(date)"
 echo "[regression] Output: $PWD/$OUT_CHG"

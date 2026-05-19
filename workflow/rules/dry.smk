@@ -17,7 +17,7 @@ rule pdb4munro:
     shell:
         r"""
         cd "{params.cage}"
-        cagepipe-pdb4munro inputfile.xyz --chg inputfile.chg -o bone.pdb
+        pdb4munro inputfile.xyz --chg inputfile.chg -o bone.pdb
         """
 
 
@@ -35,9 +35,9 @@ rule munro:
         r"""
         cd "{params.cage}"
         if [ -n "{params.gaff}" ]; then
-            cagepipe-munro -p bone.pdb -g "{params.gaff}" --auto-from-pdb -o munro.frcmod
+            munro -p bone.pdb -g "{params.gaff}" --auto-from-pdb -o munro.frcmod
         else
-            cagepipe-munro -p bone.pdb --auto-from-pdb -o munro.frcmod
+            munro -p bone.pdb --auto-from-pdb -o munro.frcmod
         fi
         """
 
@@ -55,7 +55,7 @@ rule tleapgen:
     shell:
         r"""
         cd "{params.cage}"
-        cagepipe-tleapgen -p bone.pdb -o tleap.in --prefix {params.prefix}
+        tleapgen -p bone.pdb -o tleap.in --prefix {params.prefix}
         """
 
 

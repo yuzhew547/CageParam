@@ -14,5 +14,5 @@
 
 module load multiwfn/noGUI
 # SLURM's --chdir sets cwd to the cage dir; do not cd elsewhere.
-# Requires the `cagepipe` conda env (provides cagepipe-respfit on PATH).
-cagepipe-respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux
+# Requires the `cagepipe` conda env (provides respfit on PATH).
+respfit scr_1/inputfile.molden -o inputfile.chg --keep-aux

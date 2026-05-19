@@ -27,7 +27,7 @@ rule seasoning_outside:
         r"""
         cd "{params.cage}"
         # seasoning.py is interactive; feed it sensible defaults via heredoc.
-        cagepipe-seasoning <<EOF
+        seasoning <<EOF
 bone.pdb
 tastybone.pdb
 {params.n}
@@ -53,6 +53,6 @@ rule seasoning_inside:
     shell:
         r"""
         cd "{params.cage}"
-        cagepipe-seasoning-inside -p bone.pdb -o tastybone_inside.pdb \
-            --template {params.templ}.pdb
+        filling --cage bone.pdb --out tastybone_inside.pdb \
+            --templ {params.templ}.pdb --resname {params.templ}
         """

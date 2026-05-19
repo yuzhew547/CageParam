@@ -3,8 +3,9 @@
 pdb4munro.py - Auto-detect ligands and produce bone.pdb (+ optional MOL2s).
 
 Reads a system file (.pdb or .xyz; XYZ is converted via OpenBabel),
-identifies discrete ligand fragments by graph connectivity (the BOND_CUTOFF
-of 1.90 A naturally excludes metal-ligand bonds such as Pd-N at ~2.0 A),
+identifies discrete ligand fragments by graph connectivity (Cordero
+covalent-radius cutoff per element pair; metals are filtered out before
+adjacency, so metal-ligand bonds cannot leak in),
 clusters the fragments into unique types via graph isomorphism, and writes:
   - <prefix>tempK_template.pdb for each unique ligand type
   - bone.pdb with metals separated and ligands renamed
@@ -25,7 +26,18 @@ import subprocess
 from collections import defaultdict
 
 # ==================== CONFIGURATION ====================
-BOND_CUTOFF = 1.90  # Angstrom; organic bonds, Pd-N (~2.0 A) excluded
+# Element-pair covalent cutoffs are used for fragment discovery and template
+# isomorphism (see get_bond_cutoff). A flat cutoff used to be 1.90 A, which
+# wrongly accepted a stray C-H pair at ~1.87 A in one of four chemically
+# identical anth linkers, breaking isomorphism and producing a spurious
+# heteroleptic LA/LB split for a homoleptic cage.
+COVALENT_RADII = {
+    'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57,
+    'P': 1.07, 'S': 1.05, 'CL': 1.02, 'BR': 1.20, 'I': 1.39,
+    'B': 0.84, 'SI': 1.11, 'PD': 1.39, 'PT': 1.36, 'AU': 1.36, 'AG': 1.45,
+}
+BOND_TOLERANCE = 0.40  # Angstrom; kept tight enough to reject non-bonded contacts
+BOND_CUTOFF = 1.90     # legacy fallback (only used if get_bond_cutoff disabled)
 METAL_ELEMENTS = {"PD", "PT"}
 OBABEL_CANDIDATES = [
     "/home/gridsan/ywang6/sft/build/bin/obabel",
@@ -213,14 +225,23 @@ def get_dist_sq(a1, a2):
     return (a1['x'] - a2['x'])**2 + (a1['y'] - a2['y'])**2 + (a1['z'] - a2['z'])**2
 
 
+def get_bond_cutoff(el1, el2, tolerance=BOND_TOLERANCE):
+    """Sum of Cordero covalent radii + tolerance. Mirrors mol2gen_helper so
+    the fragment-discovery adjacency and the per-residue MOL2 adjacency agree
+    on what counts as a bond."""
+    r1 = COVALENT_RADII.get(el1.upper(), 0.77)
+    r2 = COVALENT_RADII.get(el2.upper(), 0.77)
+    return r1 + r2 + tolerance
+
+
 def build_adjacency(atoms):
-    """Brute-force adjacency by distance cutoff."""
+    """Brute-force adjacency by element-pair covalent cutoff."""
     adj = defaultdict(list)
-    cutoff_sq = BOND_CUTOFF**2
     n = len(atoms)
     for i in range(n):
         for j in range(i + 1, n):
-            if get_dist_sq(atoms[i], atoms[j]) < cutoff_sq:
+            cutoff = get_bond_cutoff(atoms[i]['element'], atoms[j]['element'])
+            if get_dist_sq(atoms[i], atoms[j]) < cutoff * cutoff:
                 adj[i].append(j)
                 adj[j].append(i)
     return adj
@@ -386,8 +407,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Inputs:    .pdb or .xyz (xyz converted with OpenBabel)
-Method:    fragments are split by 1.90 A bond cutoff (excludes Pd-N etc.)
-           and clustered by graph isomorphism into unique ligand types.
+Method:    fragments are split by per-pair Cordero covalent cutoff
+           (metals filtered first) and clustered by graph isomorphism
+           into unique ligand types.
 
 Examples:
   python pdb4munro.py cage.pdb

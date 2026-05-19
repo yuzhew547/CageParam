@@ -8,10 +8,13 @@ Pipeline (per-cage, runs inside the cage directory):
       -> tleap          (-> ori_dry.{pdb,prmtop,inpcrd})
 
 Other entry points:
-    cagepipe-respfit          Multiwfn RESP (whole-cage or differential)
-    cagepipe-chgass           per-residue mol2 assignment from pre-charged templates
-    cagepipe-seasoning        place N anions around the cage
-    cagepipe-seasoning-inside place 1 PFOA inside the cavity (large-linker cages)
+    respfit          Multiwfn RESP (whole-cage or differential)
+    chgass           per-residue mol2 assignment from pre-charged templates
+    seasoning        place N anions around the cage
+    filling          parametrize a guest (pdb/xyz; --autoparam runs antechamber
+                     + parmchk2), place 1 copy (default resname GS1) inside the
+                     cavity, and optionally place --counterions N around it
+                     (BFA, BFB, ...) in a single pass
 """
 from importlib.resources import files as _files
 

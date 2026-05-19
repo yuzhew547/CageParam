@@ -27,19 +27,19 @@ Per-cage chain (also expressed as a Snakemake DAG in `workflow/Snakefile`):
 ```
 scr_1/inputfile.molden     # optional QM molden (Gaussian/Psi4/ORCA)
         |
-        | cagepipe-respfit  (Multiwfn 2-stage RESP)
+        | respfit  (Multiwfn 2-stage RESP)
         v
 inputfile.xyz + inputfile.chg
         |
-        | cagepipe-pdb4munro  (OpenBabel for XYZ->PDB; antechamber for Sybyl types)
+        | pdb4munro  (OpenBabel for XYZ->PDB; antechamber for Sybyl types)
         v
 bone.pdb + LA*.mol2, P*.mol2, Ltemp*_template.{pdb,mol2}
         |
-        | cagepipe-munro --auto-from-pdb  (uses bundled gaff2.dat)
+        | munro --auto-from-pdb  (uses bundled gaff2.dat)
         v
 munro.frcmod (+ ligand .frcmod files)
         |
-        | cagepipe-tleapgen
+        | tleapgen
         v
 tleap.in
         |
@@ -68,7 +68,7 @@ Linux build and point cagepipe at it via either:
 ```bash
 export CAGEPIPE_MULTIWFN=/path/to/Multiwfn_noGUI
 # or
-cagepipe-respfit ... --multiwfn /path/to/Multiwfn_noGUI
+respfit ... --multiwfn /path/to/Multiwfn_noGUI
 # or, in Snakemake:
 snakemake --config multiwfn=/path/to/Multiwfn_noGUI ...
 ```
@@ -80,9 +80,9 @@ snakemake --config multiwfn=/path/to/Multiwfn_noGUI ...
 ```bash
 cd <cage_dir>     # must contain inputfile.xyz and inputfile.chg
 # Either run the four stages individually:
-cagepipe-pdb4munro inputfile.xyz --chg inputfile.chg
-cagepipe-munro     -p bone.pdb --auto-from-pdb
-cagepipe-tleapgen  -p bone.pdb -o tleap.in
+pdb4munro inputfile.xyz --chg inputfile.chg
+munro     -p bone.pdb --auto-from-pdb
+tleapgen  -p bone.pdb -o tleap.in
 tleap -s -f tleap.in
 # Or use the bundled wrapper:
 bash /path/to/cagepipe/scripts/run_pipeline.sh
@@ -107,14 +107,14 @@ snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_di
 
 | Name | Purpose |
 | --- | --- |
-| `cagepipe-pdb4munro`      | XYZ/PDB → `bone.pdb` + per-residue `*.mol2` + ligand templates |
-| `cagepipe-munro`          | `bone.pdb` + GAFF → `munro.frcmod` (auto-runs antechamber+parmchk2) |
-| `cagepipe-tleapgen`       | `bone.pdb` → `tleap.in` |
-| `cagepipe-respfit`        | molden → `inputfile.chg` (whole-cage or differential RESP) |
-| `cagepipe-chgass`         | per-residue MOL2s from pre-charged templates (M12L24 cleanup) |
-| `cagepipe-seasoning`      | place N anions around the cage (random shells outside cavity) |
-| `cagepipe-seasoning-inside` | place 1 anion (e.g. PFOA) inside the cavity |
-| `cagepipe-gaff-typing`    | run antechamber + parmchk2 on template PDB(s) |
+| `pdb4munro`      | XYZ/PDB → `bone.pdb` + per-residue `*.mol2` + ligand templates |
+| `munro`          | `bone.pdb` + GAFF → `munro.frcmod` (auto-runs antechamber+parmchk2) |
+| `tleapgen`       | `bone.pdb` → `tleap.in` |
+| `respfit`        | molden → `inputfile.chg` (whole-cage or differential RESP) |
+| `chgass`         | per-residue MOL2s from pre-charged templates (M12L24 cleanup) |
+| `seasoning`      | place N anions around the cage (random shells outside cavity) |
+| `filling`        | parametrize a guest (.pdb or .xyz; `--autoparam` runs antechamber + parmchk2) and place 1 copy inside the cavity |
+| `gaff-typing`    | run antechamber + parmchk2 on template PDB(s) |
 
 ## Package layout
 
@@ -143,6 +143,6 @@ cagepipe/
 - `munro --auto-from-pdb` will run `antechamber` and `parmchk2` on every
   `*_template.pdb` it finds — make sure your `cagepipe` env is active so they're on PATH.
 - The bundled `gaff2.dat` ships at `src/cagepipe/data/gaff2.dat`. Override with
-  `cagepipe-munro -g /custom/gaff2.dat`.
+  `munro -g /custom/gaff2.dat`.
 - Multiwfn redistribution is restricted by its license — that's why it's not in the
   conda env file.
