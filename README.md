@@ -103,29 +103,3 @@ cntlgen [--pdb PDB] [--resname RESNAME] [--out OUT]
 # Or use the bundled wrapper:
 bash /path/to/cagepipe/scripts/run_pipeline.sh
 ```
-
-### Option 2: Snakemake (recommended for batch work)
-
-```bash
-# Single cage
-snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_dir>
-
-# Many cages, in parallel (limit to N at a time)
-for d in 1013 1036 1052 ...; do
-  snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d "$d" &
-done; wait
-
-# Dry-run the DAG without executing anything
-snakemake --snakefile /path/to/cagepipe/workflow/Snakefile --cores 1 -d <cage_dir> -n
-
-
-## Notes / quirks
-
-- The pipeline expects a Pd-N or Pt-N metal-coordinating cage. Bond detection uses a
-  1.90 Å covalent cutoff, which naturally excludes metal–ligand bonds.
-- `munro --auto-from-pdb` will run `antechamber` and `parmchk2` on every
-  `*_template.pdb` it finds — make sure your `cagepipe` env is active so they're on PATH.
-- The bundled `gaff2.dat` ships at `src/cagepipe/data/gaff2.dat`. Override with
-  `munro -g /custom/gaff2.dat`.
-- Multiwfn redistribution is restricted by its license — that's why it's not in the
-  conda env file.
