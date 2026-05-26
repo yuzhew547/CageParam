@@ -186,7 +186,7 @@ def build_parser():
                     help="solvated PDB to read (default: gus_solv.pdb)")
     ap.add_argument("--resname", default="GS1",
                     help="guest residue name (default: GS1 — matches the "
-                         "default from `filling` / `seasoning_inside`)")
+                         "default from  `seasoning`)")
     ap.add_argument("--template", default=None,
                     help="path to a cntl template; defaults to the built-in template")
     ap.add_argument("--out", default="gus_solv.cntl",

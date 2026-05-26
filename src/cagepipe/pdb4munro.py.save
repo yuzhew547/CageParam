@@ -26,22 +26,16 @@ import subprocess
 from collections import defaultdict
 
 # ==================== CONFIGURATION ====================
-# Only support common ligands without metal ion  
+# Only support common ligands without metal ion on it
 COVALENT_RADII = {
     'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57,
     'P': 1.07, 'S': 1.05, 'CL': 1.02, 'BR': 1.20, 'I': 1.39,
     'B': 0.84, 'SI': 1.11, 'PD': 1.39, 'PT': 1.36, 'As': 1.21,
     'Se': 1.16, 'Te': 1.36
 }
-BOND_TOLERANCE = 0.40  # Angstrom; kept tight enough to reject non-bonded contacts
-BOND_CUTOFF = 1.90     # legacy fallback (only used if get_bond_cutoff disabled)
+BOND_TOLERANCE = 0.40 		    # Angstrom; kept tight enough to reject non-bonded contacts
+BOND_CUTOFF = 1.90 		    # legacy fallback (only used if get_bond_cutoff disabled)
 METAL_ELEMENTS = {"PD", "PT"}
-
-# External tools are resolved from the user's PATH (so any active conda/
-# AmberTools env is picked up). OpenBabel's own BABEL_LIBDIR / BABEL_DATADIR
-# env vars are still honored for its data directories. This mirrors
-# seasoning.py so the whole package discovers tools the same way and stays
-# portable across machines.
 OBABEL_NAMES      = ["obabel", "babel"]
 ANTECHAMBER_NAMES = ["antechamber"]
 # =======================================================
@@ -49,9 +43,14 @@ ANTECHAMBER_NAMES = ["antechamber"]
 
 # --------------- File loading (PDB / XYZ) ---------------
 
-def find_exe(names):
-    """Resolve an external tool by trying each name on PATH.
-    Returns the resolved path or None."""
+def find_exe(env_var, names):
+    override = os.environ.get(env_var)
+    if override:
+        if os.path.isfile(override) and os.access(override, os.X_OK):
+            return override
+        which = shutil.which(override)
+        if which:
+            return which
     for name in names:
         which = shutil.which(name)
         if which:
@@ -60,7 +59,7 @@ def find_exe(names):
 
 
 def find_obabel():
-    return find_exe(OBABEL_NAMES)
+    return find_exe("CAGEPIPE_OBABEL", OBABEL_NAMES)
 
 
 def obabel_env():
@@ -73,8 +72,8 @@ def xyz_to_pdb(xyz_path, pdb_path):
     obabel = find_obabel()
     if obabel is None:
         raise RuntimeError(
-            "OpenBabel (obabel) not found on PATH. Install OpenBabel or add it "
-            "to your PATH."
+            "OpenBabel (obabel) not found on PATH. Install OpenBabel or set "
+            "CAGEPIPE_OBABEL to its full path."
         )
     print(f"   Converting {xyz_path} -> {pdb_path}\n   using {obabel}")
     # OpenBabel CLI needs `-O<file>` joined, not separated.
@@ -90,7 +89,7 @@ def xyz_to_pdb(xyz_path, pdb_path):
 
 
 def find_antechamber():
-    return find_exe(ANTECHAMBER_NAMES)
+    return find_exe("CAGEPIPE_ANTECHAMBER", ANTECHAMBER_NAMES)
 
 
 def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2"):
@@ -104,7 +103,7 @@ def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2"):
     if antech is None:
         raise RuntimeError(
             "antechamber not found on PATH. Activate an AmberTools env (e.g. "
-            "`conda activate AmberTools`)."
+            "`conda activate AmberTools`) or set CAGEPIPE_ANTECHAMBER."
         )
 
     def _run(in_path, in_fmt):
@@ -408,6 +407,10 @@ Examples:
     parser.add_argument('input', help='Input system file (.pdb or .xyz)')
     parser.add_argument('-o', '--output', default='bone.pdb',
                         help='Output PDB filename (default: bone.pdb)')
+    parser.add_argument('--naming', choices=['auto', 'sequential'],
+                        default='auto',
+                        help='auto: LA/LB/LC/LD per template type; '
+                             'sequential: L1, L2, L3, ...')
     parser.add_argument('--chg',
                         help='Optional CHG file (RESP charges from respfit.py). '
                              'When given, antechamber is run on each template '
@@ -485,8 +488,11 @@ Examples:
         tpl = templates[tpl_idx]
         template_residue_counter[tpl_idx] += 1
 
-        prefix = get_residue_prefix(tpl_idx, len(templates))
-        res_name = f"{prefix}{template_residue_counter[tpl_idx]}"
+        if args.naming == 'sequential':
+            res_name = f"L{i + 1}"
+        else:
+            prefix = get_residue_prefix(tpl_idx, len(templates))
+            res_name = f"{prefix}{template_residue_counter[tpl_idx]}"
         res_seq = i + 1
 
         for t_idx in range(len(tpl['atoms'])):

@@ -26,35 +26,28 @@ import subprocess
 import sys
 import tempfile
 
-# Search order: PATH first (so the active conda env wins), then known fallbacks.
-ANTECHAMBER_CANDIDATES = [
-    "antechamber",
-    "/home/gridsan/ywang6/.conda/envs/metallicious/bin/antechamber",
-    "/home/gridsan/ywang6/.conda/envs/AmberTools25/bin/antechamber",
-]
-PARMCHK2_CANDIDATES = [
-    "parmchk2",
-    "/home/gridsan/ywang6/.conda/envs/metallicious/bin/parmchk2",
-    "/home/gridsan/ywang6/.conda/envs/AmberTools25/bin/parmchk2",
-]
+# Tools are resolved from the user's PATH, so whatever conda/AmberTools env is
+# active is picked up. OpenBabel's own BABEL_LIBDIR / BABEL_DATADIR env vars are
+# still honored for its data directories.
+ANTECHAMBER_NAMES = ["antechamber"]
+PARMCHK2_NAMES    = ["parmchk2"]
+OBABEL_NAMES      = ["obabel", "babel"]
 
 
-def _which(candidates):
-    for p in candidates:
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return p
-        located = shutil.which(p)
+def _which(names):
+    for name in names:
+        located = shutil.which(name)
         if located:
             return located
     return None
 
 
 def find_antechamber():
-    return _which(ANTECHAMBER_CANDIDATES)
+    return _which(ANTECHAMBER_NAMES)
 
 
 def find_parmchk2():
-    return _which(PARMCHK2_CANDIDATES)
+    return _which(PARMCHK2_NAMES)
 
 
 def derive_prefix(pdb_path):
@@ -75,26 +68,14 @@ def derive_prefix(pdb_path):
     return base
 
 
-_OBABEL_CANDIDATES = [
-    "/home/gridsan/ywang6/sft/build/bin/obabel",
-    "obabel",
-    "babel",
-]
-
-
 def _find_obabel():
-    return _which(_OBABEL_CANDIDATES)
+    return _which(OBABEL_NAMES)
 
 
 def _obabel_env():
-    env = os.environ.copy()
-    libdir = "/home/gridsan/ywang6/sft/build/lib"
-    datadir = "/home/gridsan/ywang6/sft/openbabel-openbabel-2-4-0/data"
-    if os.path.isdir(libdir):
-        env.setdefault("BABEL_LIBDIR", libdir)
-    if os.path.isdir(datadir):
-        env.setdefault("BABEL_DATADIR", datadir)
-    return env
+    # Pass BABEL_LIBDIR / BABEL_DATADIR through if the user set them; otherwise
+    # let OpenBabel use the defaults compiled into the binary on PATH.
+    return os.environ.copy()
 
 
 def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2",
@@ -109,7 +90,7 @@ def run_antechamber(pdb_path, mol2_path, net_charge=0, atom_type="gaff2",
     if exe is None:
         raise RuntimeError(
             "antechamber not found on PATH. Activate an AmberTools conda env "
-            "(e.g. `conda activate metallicious`) or update ANTECHAMBER_CANDIDATES."
+            "(e.g. `conda activate metallicious`)."
         )
 
     pdb_abs = os.path.abspath(pdb_path)

@@ -30,7 +30,7 @@ tleapgen         = "cagepipe.tleapgen:main"
 respfit          = "cagepipe.respfit:main"
 chgass           = "cagepipe.chgass:main"
 seasoning        = "cagepipe.seasoning:main"
-filling          = "cagepipe.seasoning_inside:main"
+filling          = "cagepipe.seasoning:main"
 gaff-typing      = "cagepipe.gaff_typing:main"
 cntlgen          = "cagepipe.cntlgen:main"
 
@@ -41,4 +41,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-cagepipe = ["data/*.dat", "data/leaprc.*", "data/*.bak"]
+cagepipe = ["data/*.dat", "data/leaprc."]
